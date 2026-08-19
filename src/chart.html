@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTIGRAVITY // Live Chart</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #000;
+            --color-primary: #00f0ff;
+            --color-success: #00ff88;
+            --color-muted: #8e8eaf;
+            --font-main: 'Outfit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-base);
+            color: #fff;
+            font-family: var(--font-main);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Floating Overlay for Status */
+        .status-overlay {
+            position: absolute;
+            top: 0.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            z-index: 10;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--color-success);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(0, 255, 136, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="status-overlay">
+        <span class="status-dot"></span>
+        <span id="status-display" class="status-text">MONITORING TRADE...</span>
+    </div>
+
+    <div class="chart-container">
+        <iframe id="target-chart" src=""></iframe>
+    </div>
+
+    <script>
+        // Parse token address from query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenAddress = urlParams.get('address');
+        const iframe = document.getElementById('target-chart');
+        const statusDisplay = document.getElementById('status-display');
+
+        if (!tokenAddress) {
+            alert("No token address specified!");
+            window.close();
+        }
+
+        // Set iframe source
+        iframe.src = `https://www.geckoterminal.com/solana/tokens/${tokenAddress}?embed=1&info=0&swaps=0`;
+
+        // Poll sessions to verify if trade is still active
+        async function checkSessionStatus() {
+            try {
+                const res = await fetch('/api/sessions');
+                const sessions = await res.json();
+                
+                // Find if this token is still active
+                const activeSession = sessions.find(s => s.token_address === tokenAddress);
+                
+                if (activeSession) {
+                    statusDisplay.innerText = `MONITORING: ${activeSession.token_symbol} (Grid ${activeSession.grids_bought_count}/5)`;
+                } else {
+                    // Trade has closed!
+                    statusDisplay.innerText = "TRADE CLOSED. CLOSING WINDOW...";
+                    statusDisplay.style.color = "#ff3366";
+                    
+                    // Close the window after a short 2-second delay to show the status change
+                    setTimeout(() => {
+                        window.close();
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error("Failed to fetch session status in chart:", err);
+            }
+        }
+
+        // Poll every 2 seconds
+        setInterval(checkSessionStatus, 2000);
+        checkSessionStatus();
+    </script>
+</body>
+</html>

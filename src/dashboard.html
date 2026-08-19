@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTIGRAVITY // Solana Grid Trading Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0a0a0f;
+            --bg-surface: rgba(18, 18, 29, 0.65);
+            --bg-card: rgba(28, 28, 45, 0.4);
+            --border-glow: rgba(0, 240, 255, 0.15);
+            --color-primary: #00f0ff;
+            --color-success: #00ff88;
+            --color-error: #ff3366;
+            --color-text: #f0f0f5;
+            --color-muted: #8e8eaf;
+            --font-main: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(0, 240, 255, 0.05) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(255, 51, 102, 0.05) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--color-text);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            background: rgba(10, 10, 15, 0.8);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-symbol {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        .logo-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--color-text);
+            opacity: 0.9;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 50px;
+            font-size: 0.85rem;
+            color: var(--color-success);
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--color-success);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .main-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: var(--bg-surface);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1.25rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-glow);
+            box-shadow: 0 4px 20px rgba(0, 240, 255, 0.05);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--color-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+        }
+
+        .stat-val.positive {
+            color: var(--color-success);
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
+        }
+
+        .stat-val.negative {
+            color: var(--color-error);
+            text-shadow: 0 0 10px rgba(255, 51, 102, 0.1);
+        }
+
+        /* Glass Panel */
+        .panel {
+            background: var(--bg-surface);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Grid Session details */
+        .active-session-box {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+        }
+
+        .grid-data-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .grid-data-row:last-child {
+            border-bottom: none;
+        }
+
+        .grid-data-label {
+            color: var(--color-muted);
+            font-size: 0.9rem;
+        }
+
+        .grid-data-value {
+            font-family: var(--font-mono);
+            font-weight: 700;
+        }
+
+        /* Table Design */
+        .table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            padding: 0.75rem 1rem;
+            color: var(--color-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-family: var(--font-main);
+        }
+
+        tr {
+            transition: background 0.2s ease;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+        }
+
+        .token-cell {
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .token-cell span {
+            font-size: 0.75rem;
+            color: var(--color-muted);
+            font-weight: 400;
+            font-family: var(--font-mono);
+        }
+
+        .pnl-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .pnl-badge.win {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--color-success);
+        }
+
+        .pnl-badge.loss {
+            background: rgba(255, 51, 102, 0.1);
+            color: var(--color-error);
+        }
+
+        .pnl-badge.open {
+            background: rgba(0, 240, 255, 0.1);
+            color: var(--color-primary);
+        }
+
+        .chart-btn {
+            background: linear-gradient(135deg, var(--color-primary), #00aaff);
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-family: var(--font-main);
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: fit-content;
+            margin-top: 0.5rem;
+        }
+
+        .chart-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 12px var(--color-primary);
+        }
+        
+        .active-sessions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .mono-cell {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .link-cell a {
+            color: var(--color-primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .link-cell a:hover {
+            color: #fff;
+            text-decoration: underline;
+        }
+
+        /* Right column iFrame panel */
+        .chart-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 600px;
+        }
+
+        .iframe-container {
+            width: 100%;
+            flex-grow: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: #000;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(0, 255, 136, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(0, 255, 136, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <span class="logo-symbol">⟁</span>
+            <span class="logo-text">ANTIGRAVITY</span>
+        </div>
+        <div class="header-status">
+            <div id="wallet-display" class="mono-cell" style="color: var(--color-muted); font-size: 0.85rem;">Hqf8a2...UpcSrnG</div>
+            <div class="status-badge">
+                <span class="status-dot"></span>
+                <span>SYSTEM ACTIVE</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <!-- Main Column (Left) -->
+        <div class="main-column">
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card" style="border: 1px solid rgba(0, 240, 255, 0.25)">
+                    <div class="stat-label" style="color: var(--color-primary)">Live Wallet Balance</div>
+                    <div id="stat-wallet-balance" class="stat-val" style="color: var(--color-primary); font-family: var(--font-mono);">0.000000 SOL</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Trades</div>
+                    <div id="stat-total-trades" class="stat-val">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Win Rate</div>
+                    <div id="stat-win-rate" class="stat-val positive">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Realized Net profit</div>
+                    <div id="stat-net-pnl" class="stat-val">0.00 SOL</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Grids</div>
+                    <div id="stat-active-grids" class="stat-val" style="color: var(--color-primary)">0/1</div>
+                </div>
+            </div>
+
+            <!-- Active Grid Sessions -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">⚡ Active Grid Session</div>
+                </div>
+                <div id="active-session-container">
+                    <div class="grid-data-row" style="justify-content: center; color: var(--color-muted); padding: 2rem 0;">
+                        No active grid session running. Hunting Raydium migrations...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ledger Table -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">📋 Trade Ledger</div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Status</th>
+                                <th>Buy Price</th>
+                                <th>Sell Price</th>
+                                <th>Amount (SOL)</th>
+                                <th>PNL %</th>
+                                <th>Time</th>
+                                <th>Tx</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledger-body">
+                            <tr>
+                                <td colspan="8" style="text-align: center; color: var(--color-muted); padding: 2rem;">Loading trade data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedTokenAddress = ''; // Dynamically loaded
+
+        // M3: All /api/* endpoints now require the same auth token as the
+        // webhook.  The token is stored in localStorage (set via prompt on
+        // first load) and appended as ?auth=<token> to every API fetch.
+        function getAuthToken() {
+            let token = localStorage.getItem('webhook_auth_token');
+            if (!token) {
+                token = prompt('Enter the webhook auth token to view the dashboard:') || '';
+                if (token) localStorage.setItem('webhook_auth_token', token);
+            }
+            return token;
+        }
+
+        function apiUrl(path) {
+            const token = getAuthToken();
+            const sep = path.includes('?') ? '&' : '?';
+            return `${path}${sep}auth=${encodeURIComponent(token)}`;
+        }
+
+        function setChartToken(address) {
+            if (!address) return;
+            window.open(`https://gmgn.ai/sol/token/${address}`, '_blank');
+        }
+
+        async function fetchDashboardData() {
+            try {
+                const tradesRes = await fetch(apiUrl('/api/trades'));
+                if (!tradesRes.ok) throw new Error('trades fetch failed');
+                const trades = await tradesRes.json();
+                
+                const sessionsRes = await fetch(apiUrl('/api/sessions'));
+                if (!sessionsRes.ok) throw new Error('sessions fetch failed');
+                const sessions = await sessionsRes.json();
+
+                updateStats(trades, sessions);
+                updateActiveSession(sessions);
+                updateLedger(trades);
+            } catch (err) {
+                console.error("Dashboard poll failed:", err);
+            }
+        }
+
+        async function fetchDashboardDataSilent() {
+            try {
+                const tradesRes = await fetch(apiUrl('/api/trades'));
+                const trades = await tradesRes.json();
+                updateLedger(trades);
+            } catch (err) {}
+        }
+
+        function updateStats(trades, sessions) {
+            document.getElementById('stat-total-trades').innerText = trades.length;
+            document.getElementById('stat-active-grids').innerText = `${sessions.length}/1`;
+            
+            const closedTrades = trades.filter(t => t.status === 'CLOSED');
+            if (closedTrades.length === 0) {
+                document.getElementById('stat-win-rate').innerText = '0%';
+                document.getElementById('stat-net-pnl').innerText = '0.0000 SOL';
+                document.getElementById('stat-net-pnl').className = 'stat-val';
+                return;
+            }
+
+            const winningTrades = closedTrades.filter(t => (t.pnl_pct || 0) > 0);
+            const winRate = ((winningTrades.length / closedTrades.length) * 100).toFixed(0);
+            document.getElementById('stat-win-rate').innerText = `${winRate}%`;
+
+            let netSol = 0;
+            closedTrades.forEach(t => {
+                const spent = t.buy_amount_sol || 0;
+                const returned = t.sell_amount_sol || 0;
+                netSol += (returned - spent);
+            });
+
+            const netPnlEl = document.getElementById('stat-net-pnl');
+            netPnlEl.innerText = `${netSol >= 0 ? '+' : ''}${netSol.toFixed(4)} SOL`;
+            netPnlEl.className = 'stat-val ' + (netSol >= 0 ? 'positive' : 'negative');
+        }
+
+        function updateActiveSession(sessions) {
+            const container = document.getElementById('active-session-container');
+            if (sessions.length === 0) {
+                container.innerHTML = `
+                    <div class="grid-data-row" style="justify-content: center; color: var(--color-muted); padding: 2rem 0;">
+                        No active grid session running. Hunting Raydium migrations...
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="active-sessions-grid">
+                    ${sessions.map(session => `
+                        <div class="active-session-box">
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Active Token</span>
+                                <span class="grid-data-value" style="color: var(--color-primary);">${session.token_name} (${session.token_symbol})</span>
+                            </div>
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Mint Address</span>
+                                <span class="grid-data-value" style="font-size: 0.8rem; color: var(--color-muted);">${session.token_address}</span>
+                            </div>
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Base Reference Price</span>
+                                <span class="grid-data-value">$${session.baseline_price.toFixed(6)}</span>
+                            </div>
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Grids Filled</span>
+                                <span class="grid-data-value" style="color: var(--color-success);">${session.grids_bought_count} / 5</span>
+                            </div>
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Total Capital Invested</span>
+                                <span class="grid-data-value">${session.total_sol_spent.toFixed(3)} SOL</span>
+                            </div>
+                            <div class="grid-data-row">
+                                <span class="grid-data-label">Tokens Held</span>
+                                <span class="grid-data-value">${session.total_tokens_held.toFixed(2)} ${session.token_symbol}</span>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; margin-top: 0.75rem;">
+                                <button class="chart-btn" onclick="setChartToken('${session.token_address}')">
+                                    📈 View Live Chart
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function updateLedger(trades) {
+            const tbody = document.getElementById('ledger-body');
+            if (trades.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--color-muted); padding: 2rem;">No trades recorded yet.</td>
+                    </tr>`;
+                return;
+            }
+
+            tbody.innerHTML = trades.map(t => {
+                const isClosed = t.status === 'CLOSED';
+                const pnl = t.pnl_pct || 0;
+                let badgeClass = 'pnl-badge open';
+                let pnlText = 'OPEN';
+                
+                if (isClosed) {
+                    badgeClass = pnl >= 0 ? 'pnl-badge win' : 'pnl-badge loss';
+                    pnlText = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`;
+                }
+
+                const shortAddress = `${t.token_address.slice(0, 6)}...${t.token_address.slice(-6)}`;
+                const txSignature = t.sell_signature || t.buy_signature;
+                const shortTx = `${txSignature.slice(0, 6)}...${txSignature.slice(-6)}`;
+                
+                const isSelected = t.token_address === selectedTokenAddress;
+                const rowClass = isSelected ? 'selected-row' : '';
+
+                return `
+                    <tr class="${rowClass}" onclick="setChartToken('${t.token_address}')">
+                        <td class="token-cell">
+                            ${t.token_name} 
+                            <span>${shortAddress}</span>
+                        </td>
+                        <td>
+                            <span class="${badgeClass}">${pnlText}</span>
+                        </td>
+                        <td class="mono-cell">$${t.buy_price_usd.toFixed(6)}</td>
+                        <td class="mono-cell">${t.sell_price_usd ? '$' + t.sell_price_usd.toFixed(6) : '-'}</td>
+                        <td class="mono-cell">${t.buy_amount_sol.toFixed(3)} SOL</td>
+                        <td>
+                            <span class="${pnl >= 0 ? 'positive' : 'negative'} mono-cell" style="font-weight: 700;">
+                                ${isClosed && t.pnl_usd !== null ? (t.pnl_usd >= 0 ? '+' : '') + '$' + t.pnl_usd.toFixed(2) : '-'}
+                            </span>
+                        </td>
+                        <td style="font-size: 0.8rem; color: var(--color-muted);">${t.buy_timestamp.split(' ')[1] || t.buy_timestamp}</td>
+                        <td class="link-cell">
+                            <a href="https://solscan.io/tx/${txSignature}" target="_blank" onclick="event.stopPropagation()">${shortTx}</a>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Poll every 3 seconds
+        setInterval(fetchDashboardData, 3000);
+        fetchDashboardData();
+
+        // C3: The client-side realtime wallet tracker previously read
+        // `helius_api_key` from /api/config and built RPC/WebSocket URLs
+        // containing the key in the query string.  The server no longer
+        // returns the key, so the client-side RPC construction is removed.
+        // Wallet-balance tracking must now be proxied server-side (out of
+        // scope for this remediation).  We still fetch the (non-secret)
+        // config to display the wallet pubkey.
+        async function initRealtimeWalletTracker() {
+            try {
+                const configRes = await fetch(apiUrl('/api/config'));
+                if (!configRes.ok) {
+                    console.error('Config fetch failed — check auth token.');
+                    return;
+                }
+                const config = await configRes.json();
+                const pubkey = config.wallet_pubkey;
+                if (pubkey) {
+                    console.log('Wallet pubkey (server-provided):', pubkey);
+                }
+                document.getElementById('stat-wallet-balance').innerText = '—';
+            } catch (err) {
+                console.error('Failed to initialize wallet tracker:', err);
+            }
+        }
+
+        // Start everything
+        initRealtimeWalletTracker();
+    </script>
+</body>
+</html>
