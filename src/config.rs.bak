@@ -1,0 +1,448 @@
+use std::env;
+use std::str::FromStr;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Keypair;
+use solana_sdk::signer::Signer;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Strategy {
+    Hunter,
+    Grid,
+    Autonomous,
+}
+
+#[allow(dead_code)]
+pub struct BotConfig {
+    pub helius_api_key: String,
+    pub keypair: Keypair,
+    pub input_mint: Pubkey,
+    pub output_mint: Pubkey,
+    pub trade_amount: u64,
+    pub slippage_bps: u32,
+    pub check_interval_secs: u64,
+    pub dry_run: bool,
+    pub limit_price_usdc: Option<f64>,
+    pub sell_sol_target_price: Option<f64>,
+    pub buy_sol_target_price: Option<f64>,
+    pub trade_amount_sol: u64,
+    pub trade_amount_usdc: u64,
+    pub max_hold_time_minutes: u32,
+    pub min_liquidity: f64,
+    pub max_top_10_holder_rate: f64,
+    pub max_dev_team_hold_rate: f64,
+    pub max_creator_balance_rate: f64,
+    pub max_suspected_insider_rate: f64,
+    pub require_socials: bool,
+    pub min_smart_degen_count: u32,
+    pub max_rat_trader_rate: f64,
+    pub min_progress_pct: f64,
+    pub max_progress_pct: f64,
+    pub take_profit_pct: f64,
+    pub stop_loss_pct: f64,
+    pub strategy: Strategy,
+    pub grid_trade_size_sol: u64,
+    pub grid_spacing_pct: f64,
+    pub grid_profit_pct: f64,
+    pub grid_max_levels: u32,
+    pub webhook_port: u16,
+    pub webhook_auth_token: Option<String>,
+    pub jito_tip_lamports: u64,
+    pub max_parallel_positions: usize,
+    pub moonbag_retain_pct: f64,
+    pub min_whale_rating: u32,
+    pub migration_cooldown_secs: u64,
+    pub min_v_delta_entry: f64,
+    pub min_lp_mc_ratio_entry: f64,
+    pub min_lp_mc_ratio_exit: f64,
+    pub coingecko_api_key: Option<String>,
+}
+
+impl BotConfig {
+    pub fn load_from_env() -> Self {
+        // Load the api key
+        let helius_api_key = env::var("HELIUS_API_KEY")
+            .expect("HELIUS_API_KEY is not set in the environment or .env file");
+
+        // Load private key (or generate ephemeral for testing if not provided)
+        let keypair = match env::var("WALLET_PRIVATE_KEY") {
+            Ok(private_key_str) => {
+                parse_keypair(&private_key_str)
+                    .expect("Failed to parse WALLET_PRIVATE_KEY. Must be a JSON byte array or Base58 string")
+            }
+            Err(_) => {
+                println!("⚠️  WALLET_PRIVATE_KEY not set in .env. Generating a temporary ephemeral keypair for dry-runs...");
+                Keypair::new()
+            }
+        };
+
+        // Load input mint (default: SOL)
+        let input_mint_str = env::var("INPUT_MINT")
+            .unwrap_or_else(|_| "So11111111111111111111111111111111111111112".to_string());
+        let input_mint = Pubkey::from_str(&input_mint_str)
+            .expect("Invalid INPUT_MINT pubkey");
+
+        // Load output mint (default: USDC)
+        let output_mint_str = env::var("OUTPUT_MINT")
+            .unwrap_or_else(|_| "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string());
+        let output_mint = Pubkey::from_str(&output_mint_str)
+            .expect("Invalid OUTPUT_MINT pubkey");
+
+        // Trade amount (default: 0.05 SOL = 50,000,000 lamports)
+        let trade_amount_str = env::var("TRADE_AMOUNT_LAMPORTS")
+            .unwrap_or_else(|_| "50000000".to_string());
+        let trade_amount = trade_amount_str.parse::<u64>()
+            .expect("Invalid TRADE_AMOUNT_LAMPORTS integer");
+
+        // Specific trade amounts for SOL and USDC legs of the state machine
+        let trade_amount_sol_str = env::var("TRADE_AMOUNT_SOL_LAMPORTS")
+            .unwrap_or_else(|_| trade_amount_str.clone());
+        let trade_amount_sol = trade_amount_sol_str.parse::<u64>()
+            .expect("Invalid TRADE_AMOUNT_SOL_LAMPORTS integer");
+
+        let trade_amount_usdc_str = env::var("TRADE_AMOUNT_USDC_BASE")
+            .unwrap_or_else(|_| "10000000".to_string()); // 10 USDC default
+        let trade_amount_usdc = trade_amount_usdc_str.parse::<u64>()
+            .expect("Invalid TRADE_AMOUNT_USDC_BASE integer");
+
+        // Slippage in BPS (default: 50 BPS = 0.5%)
+        let slippage_bps_str = env::var("SLIPPAGE_BPS")
+            .unwrap_or_else(|_| "50".to_string());
+        let slippage_bps = slippage_bps_str.parse::<u32>()
+            .expect("Invalid SLIPPAGE_BPS integer");
+
+        // Check interval (default: 15 seconds)
+        let check_interval_str = env::var("CHECK_INTERVAL_SECS")
+            .unwrap_or_else(|_| "15".to_string());
+        let check_interval_secs = check_interval_str.parse::<u64>()
+            .expect("Invalid CHECK_INTERVAL_SECS integer");
+
+        // Max hold time in minutes (default: 30 minutes)
+        let max_hold_time_str = env::var("MAX_HOLD_TIME_MINUTES")
+            .unwrap_or_else(|_| "30".to_string());
+        let max_hold_time_minutes = max_hold_time_str.parse::<u32>()
+            .expect("Invalid MAX_HOLD_TIME_MINUTES integer");
+
+        // Security filter thresholds
+        let min_liquidity_str = env::var("MIN_LIQUIDITY_USD")
+            .unwrap_or_else(|_| "3000".to_string());
+        let min_liquidity = min_liquidity_str.parse::<f64>()
+            .unwrap_or(3000.0);
+
+        let max_top_10_holder_rate_str = env::var("MAX_TOP_10_HOLDER_PCT")
+            .unwrap_or_else(|_| "30".to_string());
+        let max_top_10_holder_rate = max_top_10_holder_rate_str.parse::<f64>()
+            .unwrap_or(30.0) / 100.0;
+
+        let max_dev_team_hold_rate_str = env::var("MAX_DEV_TEAM_HOLD_PCT")
+            .unwrap_or_else(|_| "15".to_string());
+        let max_dev_team_hold_rate = max_dev_team_hold_rate_str.parse::<f64>()
+            .unwrap_or(15.0) / 100.0;
+
+        let max_creator_balance_rate_str = env::var("MAX_CREATOR_BALANCE_PCT")
+            .unwrap_or_else(|_| "10".to_string());
+        let max_creator_balance_rate = max_creator_balance_rate_str.parse::<f64>()
+            .unwrap_or(10.0) / 100.0;
+
+        let max_suspected_insider_rate_str = env::var("MAX_SUSPECTED_INSIDER_PCT")
+            .unwrap_or_else(|_| "15".to_string());
+        let max_suspected_insider_rate = max_suspected_insider_rate_str.parse::<f64>()
+            .unwrap_or(15.0) / 100.0;
+
+        let require_socials_str = env::var("REQUIRE_SOCIALS")
+            .unwrap_or_else(|_| "true".to_string());
+        let require_socials = require_socials_str.trim().to_lowercase() != "false" && require_socials_str.trim() != "0";
+
+        let min_smart_degen_str = env::var("MIN_SMART_DEGEN_COUNT")
+            .unwrap_or_else(|_| "0".to_string());
+        let min_smart_degen_count = min_smart_degen_str.parse::<u32>()
+            .unwrap_or(0);
+
+        let max_rat_trader_str = env::var("MAX_RAT_TRADER_PCT")
+            .unwrap_or_else(|_| "10".to_string());
+        let max_rat_trader_rate = max_rat_trader_str.parse::<f64>()
+            .unwrap_or(10.0) / 100.0;
+
+        let min_progress_str = env::var("MIN_PROGRESS_PCT")
+            .unwrap_or_else(|_| "75".to_string());
+        let min_progress_pct = min_progress_str.parse::<f64>()
+            .unwrap_or(75.0);
+
+        let max_progress_str = env::var("MAX_PROGRESS_PCT")
+            .unwrap_or_else(|_| "90".to_string());
+        let max_progress_pct = max_progress_str.parse::<f64>()
+            .unwrap_or(90.0);
+
+        let take_profit_str = env::var("TAKE_PROFIT_PCT")
+            .unwrap_or_else(|_| "40".to_string());
+        let take_profit_pct = take_profit_str.parse::<f64>()
+            .unwrap_or(40.0);
+
+        let stop_loss_str = env::var("STOP_LOSS_PCT")
+            .unwrap_or_else(|_| "-20".to_string());
+        let stop_loss_pct = stop_loss_str.parse::<f64>()
+            .unwrap_or(-20.0);
+
+        let strategy_str = env::var("STRATEGY")
+            .unwrap_or_else(|_| "HUNTER".to_string());
+        let strategy = match strategy_str.trim().to_uppercase().as_str() {
+            "GRID" => Strategy::Grid,
+            "AUTONOMOUS" => Strategy::Autonomous,
+            _ => Strategy::Hunter,
+        };
+
+        let migration_cooldown_secs_str = env::var("MIGRATION_COOLDOWN_SECS")
+            .unwrap_or_else(|_| "90".to_string());
+        let migration_cooldown_secs = migration_cooldown_secs_str.parse::<u64>().unwrap_or(90);
+
+        let min_v_delta_entry_str = env::var("MIN_V_DELTA_ENTRY")
+            .unwrap_or_else(|_| "5.0".to_string());
+        let min_v_delta_entry = min_v_delta_entry_str.parse::<f64>().unwrap_or(5.0);
+
+        let min_lp_mc_ratio_entry_str = env::var("MIN_LP_MC_RATIO_ENTRY")
+            .unwrap_or_else(|_| "0.05".to_string());
+        let min_lp_mc_ratio_entry = min_lp_mc_ratio_entry_str.parse::<f64>().unwrap_or(0.05);
+
+        let min_lp_mc_ratio_exit_str = env::var("MIN_LP_MC_RATIO_EXIT")
+            .unwrap_or_else(|_| "0.03".to_string());
+        let min_lp_mc_ratio_exit = min_lp_mc_ratio_exit_str.parse::<f64>().unwrap_or(0.03);
+
+        let grid_trade_size_str = env::var("GRID_TRADE_SIZE_SOL")
+            .unwrap_or_else(|_| "0.02".to_string());
+        let grid_trade_size_val = grid_trade_size_str.parse::<f64>().unwrap_or(0.02);
+        let grid_trade_size_sol = (grid_trade_size_val * 1_000_000_000.0).round() as u64;
+
+        let grid_spacing_str = env::var("GRID_SPACING_PCT")
+            .unwrap_or_else(|_| "10.0".to_string());
+        let grid_spacing_pct = grid_spacing_str.parse::<f64>().unwrap_or(10.0);
+
+        let grid_profit_str = env::var("GRID_PROFIT_PCT")
+            .unwrap_or_else(|_| "15.0".to_string());
+        let grid_profit_pct = grid_profit_str.parse::<f64>().unwrap_or(15.0);
+
+        let grid_levels_str = env::var("GRID_MAX_LEVELS")
+            .unwrap_or_else(|_| "5".to_string());
+        let grid_max_levels = grid_levels_str.parse::<u32>().unwrap_or(5);
+
+        let max_parallel_positions_str = env::var("MAX_PARALLEL_POSITIONS")
+            .unwrap_or_else(|_| "1".to_string());
+        let max_parallel_positions = max_parallel_positions_str.parse::<usize>().unwrap_or(1);
+
+        let moonbag_retain_str = env::var("MOONBAG_RETAIN_PCT")
+            .unwrap_or_else(|_| "0".to_string());
+        let moonbag_retain_pct = moonbag_retain_str.parse::<f64>().unwrap_or(0.0);
+
+        let min_whale_rating_str = env::var("MIN_WHALE_RATING")
+            .unwrap_or_else(|_| "0".to_string());
+        let min_whale_rating = min_whale_rating_str.parse::<u32>().unwrap_or(0);
+
+        // Dry run mode (default: true)
+        let dry_run_str = env::var("DRY_RUN")
+            .unwrap_or_else(|_| "true".to_string());
+        let dry_run = dry_run_str.trim().to_lowercase() != "false" && dry_run_str.trim() != "0";
+
+        // Limit price in USDC (optional)
+        let limit_price_usdc = env::var("LIMIT_PRICE_USDC")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok());
+
+        // Target buy/sell prices for Grid strategy
+        let sell_sol_target_price = env::var("SELL_SOL_TARGET_PRICE")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok());
+            
+        let buy_sol_target_price = env::var("BUY_SOL_TARGET_PRICE")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok());
+
+        // Webhook configuration
+        let webhook_port_str = env::var("WEBHOOK_PORT")
+            .unwrap_or_else(|_| "3000".to_string());
+        let webhook_port = webhook_port_str.parse::<u16>().unwrap_or(3000);
+
+        let webhook_auth_token = env::var("WEBHOOK_AUTH_TOKEN").ok();
+        let jito_tip_lamports_str = env::var("JITO_TIP_LAMPORTS").unwrap_or_else(|_| "100000".to_string());
+        let jito_tip_lamports = jito_tip_lamports_str.parse::<u64>().unwrap_or(100000);
+        let coingecko_api_key = env::var("COINGECKO_API_KEY").ok();
+
+        println!("Loaded Bot Configuration:");
+        println!("  Wallet Public Key: {}", keypair.pubkey());
+        println!("  Input Mint:        {}", input_mint);
+        println!("  Output Mint:       {}", output_mint);
+        println!("  Slippage:          {} BPS", slippage_bps);
+        println!("  Check Interval:    {}s", check_interval_secs);
+        println!("  Dry Run Mode:      {}", dry_run);
+        println!("  Max Hold Time:     {} minutes", max_hold_time_minutes);
+        println!("  Min Liquidity:     ${:.1} USD", min_liquidity);
+        println!("  Max Top-10 Holder: {:.1}%", max_top_10_holder_rate * 100.0);
+        println!("  Max Dev Team Hold: {:.1}%", max_dev_team_hold_rate * 100.0);
+        println!("  Max Creator Hold:  {:.1}%", max_creator_balance_rate * 100.0);
+        println!("  Max Insider Hold:  {:.1}%", max_suspected_insider_rate * 100.0);
+        println!("  Require Socials:   {}", require_socials);
+        println!("  Min Smart Degens:  {}", min_smart_degen_count);
+        println!("  Max Rat Trader:    {:.1}%", max_rat_trader_rate * 100.0);
+        println!("  Scan Progress:     {:.1}% - {:.1}%", min_progress_pct, max_progress_pct);
+        println!("  Take Profit:       +{:.1}%", take_profit_pct);
+        println!("  Stop Loss:         {:.1}%", stop_loss_pct);
+        println!("  Strategy:          {:?}", strategy);
+        println!("  Grid Sizing (SOL): {:.4} SOL", grid_trade_size_sol as f64 / 1_000_000_000.0);
+        println!("  Grid Spacing:      {:.1}%", grid_spacing_pct);
+        println!("  Grid Profit:       {:.1}%", grid_profit_pct);
+        println!("  Grid Max Levels:   {}", grid_max_levels);
+        println!("  Jito Tip Lamports: {}", jito_tip_lamports);
+        
+        if let Some(price) = limit_price_usdc {
+            println!("  Limit Price:       {} USDC", price);
+        }
+        if let Some(sell) = sell_sol_target_price {
+            println!("  Sell SOL Target:   ${:.2} USDC", sell);
+        }
+        if let Some(buy) = buy_sol_target_price {
+            println!("  Buy SOL Target:    ${:.2} USDC", buy);
+        }
+        println!("  Trade Size (SOL):  {:.4} SOL", trade_amount_sol as f64 / 1_000_000_000.0);
+        println!("  Trade Size (USDC): {:.2} USDC", trade_amount_usdc as f64 / 1_000_000.0);
+        println!("  Max Parallel Trades: {}", max_parallel_positions);
+        println!("  Moonbag Retain:    {}%", moonbag_retain_pct);
+        println!("  Min Whale Rating:  {} points", min_whale_rating);
+        println!("  Migration Cooldown: {}s", migration_cooldown_secs);
+        println!("  Min v_delta Entry:  {}", min_v_delta_entry);
+        println!("  Min LP/MC Entry:   {:.1}%", min_lp_mc_ratio_entry * 100.0);
+        println!("  Min LP/MC Exit:    {:.1}%", min_lp_mc_ratio_exit * 100.0);
+
+        Self {
+            helius_api_key,
+            keypair,
+            input_mint,
+            output_mint,
+            trade_amount,
+            slippage_bps,
+            check_interval_secs,
+            dry_run,
+            limit_price_usdc,
+            sell_sol_target_price,
+            buy_sol_target_price,
+            trade_amount_sol,
+            trade_amount_usdc,
+            max_hold_time_minutes,
+            min_liquidity,
+            max_top_10_holder_rate,
+            max_dev_team_hold_rate,
+            max_creator_balance_rate,
+            max_suspected_insider_rate,
+            require_socials,
+            min_smart_degen_count,
+            max_rat_trader_rate,
+            min_progress_pct,
+            max_progress_pct,
+            take_profit_pct,
+            stop_loss_pct,
+            strategy,
+            grid_trade_size_sol,
+            grid_spacing_pct,
+            grid_profit_pct,
+            grid_max_levels,
+            webhook_port,
+            webhook_auth_token,
+            jito_tip_lamports,
+            max_parallel_positions,
+            moonbag_retain_pct,
+            min_whale_rating,
+            migration_cooldown_secs,
+            min_v_delta_entry,
+            min_lp_mc_ratio_entry,
+            min_lp_mc_ratio_exit,
+            coingecko_api_key,
+        }
+    }
+
+    pub fn reload_from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        if let Ok(iter) = dotenvy::from_filename_iter(".env") {
+            for item in iter {
+                if let Ok((key, value)) = item {
+                    unsafe {
+                        std::env::set_var(key, value);
+                    }
+                }
+            }
+        }
+        let res = std::panic::catch_unwind(|| {
+            Self::load_from_env()
+        });
+        match res {
+            Ok(config) => Ok(config),
+            Err(_) => Err("Config reload panicked (likely invalid .env syntax or mid-edit)".into()),
+        }
+    }
+}
+
+fn parse_keypair(s: &str) -> Option<Keypair> {
+    // 1. Try to parse as JSON byte array (e.g., [12,34,56...])
+    if s.trim().starts_with('[') && s.trim().ends_with(']') {
+        if let Ok(bytes) = serde_json::from_str::<Vec<u8>>(s) {
+            if let Ok(keypair) = Keypair::try_from(bytes.as_slice()) {
+                return Some(keypair);
+            }
+        }
+    }
+
+    // 2. Try to parse as Base58 string
+    if let Ok(bytes) = bs58::decode(s).into_vec() {
+        if let Ok(keypair) = Keypair::try_from(bytes.as_slice()) {
+            return Some(keypair);
+        }
+    }
+
+    None
+}
+
+impl Clone for BotConfig {
+    fn clone(&self) -> Self {
+        let keypair_bytes = self.keypair.to_bytes();
+        let keypair = Keypair::try_from(&keypair_bytes[..]).unwrap();
+        
+        Self {
+            helius_api_key: self.helius_api_key.clone(),
+            keypair,
+            input_mint: self.input_mint,
+            output_mint: self.output_mint,
+            trade_amount: self.trade_amount,
+            slippage_bps: self.slippage_bps,
+            check_interval_secs: self.check_interval_secs,
+            dry_run: self.dry_run,
+            limit_price_usdc: self.limit_price_usdc,
+            sell_sol_target_price: self.sell_sol_target_price,
+            buy_sol_target_price: self.buy_sol_target_price,
+            trade_amount_sol: self.trade_amount_sol,
+            trade_amount_usdc: self.trade_amount_usdc,
+            max_hold_time_minutes: self.max_hold_time_minutes,
+            min_liquidity: self.min_liquidity,
+            max_top_10_holder_rate: self.max_top_10_holder_rate,
+            max_dev_team_hold_rate: self.max_dev_team_hold_rate,
+            max_creator_balance_rate: self.max_creator_balance_rate,
+            max_suspected_insider_rate: self.max_suspected_insider_rate,
+            require_socials: self.require_socials,
+            min_smart_degen_count: self.min_smart_degen_count,
+            max_rat_trader_rate: self.max_rat_trader_rate,
+            min_progress_pct: self.min_progress_pct,
+            max_progress_pct: self.max_progress_pct,
+            take_profit_pct: self.take_profit_pct,
+            stop_loss_pct: self.stop_loss_pct,
+            strategy: self.strategy,
+            grid_trade_size_sol: self.grid_trade_size_sol,
+            grid_spacing_pct: self.grid_spacing_pct,
+            grid_profit_pct: self.grid_profit_pct,
+            grid_max_levels: self.grid_max_levels,
+            webhook_port: self.webhook_port,
+            webhook_auth_token: self.webhook_auth_token.clone(),
+            jito_tip_lamports: self.jito_tip_lamports,
+            max_parallel_positions: self.max_parallel_positions,
+            moonbag_retain_pct: self.moonbag_retain_pct,
+            min_whale_rating: self.min_whale_rating,
+            migration_cooldown_secs: self.migration_cooldown_secs,
+            min_v_delta_entry: self.min_v_delta_entry,
+            min_lp_mc_ratio_entry: self.min_lp_mc_ratio_entry,
+            min_lp_mc_ratio_exit: self.min_lp_mc_ratio_exit,
+            coingecko_api_key: self.coingecko_api_key.clone(),
+        }
+    }
+}
